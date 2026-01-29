@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.idea/
+run/
+FoodSeg103/
+VOCdevkit-1/
+*.pth
+*.png
+*.jpg
+utils/__pycache__/
