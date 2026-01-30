@@ -131,7 +131,7 @@ def parse_args():
     # 添加数据路径参数
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     # 添加模型权重路径参数
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp69/weights/best_model_104.pth")
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp85/weights/best_model_104.pth")
     # 添加类别数量参数，默认为 3
     parser.add_argument("--num-classes", default=104, type=int)
     # 添加训练设备选择的参数，默认为 "cuda"（即使用 GPU）
