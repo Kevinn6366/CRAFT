@@ -56,8 +56,8 @@ class CBAM(nn.Module):
         self.sa = SpatialAttention(kernel_size)
 
     def forward(self, x):
-        # 1. 通道注意力加权
+        # 通道注意力加权
         out = x * self.ca(x)
-        # 2. 空间注意力加权
+        # 空间注意力加权
         result = out * self.sa(out)
         return result

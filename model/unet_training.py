@@ -256,6 +256,47 @@ def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio=
     return func
 
 
+
+
+
+
+def Height_MSE_Loss(inputs, target):
+    """
+    计算高度图的均方误差损失 (MSE Loss)
+    FoodMask 公式 (10): L_Y = MSE(Y_pred, Y_gt)
+    
+    Args:
+        inputs: 模型预测的高度图，尺寸 [n, 1, h, w] 或 [n, h, w]
+        target: 真实的高度图 (Distance Map), 尺寸 [n, h, w]
+    """
+    # 1. 维度对齐
+    if isinstance(inputs, (tuple, list)):
+        inputs = inputs[0]
+        
+    n, c, h, w = inputs.size()
+    
+    # 如果预测输出包含通道维度 (通常是1)，去掉它以便和 target 对齐
+    if c == 1:
+        inputs = inputs.squeeze(1)
+    
+    # 2. 尺寸对齐 (如果 AuxLoss 分支分辨率不同，需要插值)
+    nt, ht, wt = target.size()
+    if h != ht and w != wt:
+        inputs = inputs.unsqueeze(1) # 插值需要 4D
+        inputs = F.interpolate(inputs, size=(ht, wt), mode="bilinear", align_corners=True)
+        inputs = inputs.squeeze(1)
+        
+    # 3. 计算 MSE Loss
+    # 注意：inputs 应该经过 Sigmoid (0-1之间)，target 也应该是归一化后的 (0-1之间)
+    loss = nn.MSELoss()(inputs, target)
+    
+    return loss
+
+
+
+
+
+
 def set_optimizer_lr(optimizer, lr_scheduler_func, epoch):
     # 使用学习率调度函数 lr_scheduler_func，根据当前的 epoch 获取对应的学习率
     lr = lr_scheduler_func(epoch)

@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from model.resnet_backbone import resnet50
-
+from model.cbam import CBAM
+#unet_resnet.py
 # 定义一个 U-Net 解码模块（上采样模块）
 class unetUp(nn.Module):
     def __init__(self, in_size, out_size):
@@ -10,6 +11,7 @@ class unetUp(nn.Module):
         self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, padding=1)
         self.up = nn.UpsamplingBilinear2d(scale_factor=2)
         self.relu = nn.ReLU(inplace=True)
+        self.cbam = CBAM(out_size) #CBAM模块
 
     def forward(self, inputs1, inputs2):
         outputs = torch.cat([inputs1, self.up(inputs2)], 1)
@@ -17,6 +19,7 @@ class unetUp(nn.Module):
         outputs = self.relu(outputs)
         outputs = self.conv2(outputs)
         outputs = self.relu(outputs)
+        outputs = self.cbam(outputs)#CBAM模块
         return outputs
 
 
@@ -48,9 +51,14 @@ class Unet(nn.Module):
 
         # 主分类头
         self.final = nn.Conv2d(out_filters[0], num_classes, 1)
+        # 高度图分类头
+        self.height_head = nn.Sequential(
+            nn.Conv2d(out_filters[0], 1, kernel_size=1, bias=False),
+            nn.Sigmoid() 
+        )
 
       
-        # 【新增】辅助分类头 (Auxiliary Head)
+        # 辅助分类头 (Auxiliary Head)
         # 位置：对应 up2 的输出 (Decoder倒数第二层)，特征图大小为 H/4 * W/4
         # 输入通道：out_filters[1] 即 128
    
@@ -79,9 +87,13 @@ class Unet(nn.Module):
 
         if self.up_conv is not None:
             up1 = self.up_conv(up1)
-        final = self.final(up1)
-        # 训练时返回两个值，匹配 train.py 的解包需求
+        # 分支 A: 语义分割 (Segmentation)
+        final = self.final(up1) # [B, num_classes, H, W]
+
+        # 分支 B: 高度图预测 (Height Estimation)
+        pred_height = self.height_head(up1) # [B, 1, H, W]
+        # 训练时返回*三*个值，匹配 train.py 的解包需求
         if self.training:
-            return final, aux_out
+            return final, aux_out, pred_height
         else:
             return final

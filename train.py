@@ -11,8 +11,9 @@ from torch.utils.data import DataLoader  # 导入数据加载器模块
 import time
 import datetime
 import subprocess
+from torch.utils.tensorboard import SummaryWriter
 
-from model.unet_training import CE_Loss, Dice_loss, Focal_Loss # 确保引入这三个函数
+from model.unet_training import CE_Loss, Dice_loss, Focal_Loss , Height_MSE_Loss# 确保引入这三个函数
 
 # 导入自定义模块和模型
 from model.unet_resnet import Unet  # 导入U-Net模型
@@ -233,17 +234,20 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
     pbar = tqdm(data_loader, desc=f'Epoch {epoch + 1}/{total_epochs}', mininterval=0.3)
     
     for iteration, batch in enumerate(pbar):
-        imgs, pngs, labels = batch
+        imgs, pngs, height_maps = batch
         imgs = imgs.to(device)
         pngs = pngs.to(device).long()
-        # pngs[pngs > 0] = 1   二分类逻辑
+        height_maps = height_maps.to(device).float()
+        current_max = height_maps.max()
+        if current_max > 1.0:
+            height_maps = height_maps / current_max
         optimizer.zero_grad()
 
         # 【Innovation Point】前向传播：同时获取 主输出 和 辅助输出
         if scaler is not None: # 使用混合精度训练 (AMP)
             with torch.cuda.amp.autocast():
                
-                outputs, aux_outputs = model(imgs) 
+                outputs, aux_outputs, pred_heights = model(imgs) 
                 
                 # 计算主 Loss (原尺寸)
                 loss_main = 0
@@ -268,10 +272,10 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
                 
                 if dice_loss:
                     loss_aux += Dice_loss(aux_outputs, target_small)
-                
+                loss_height = Height_MSE_Loss(pred_heights, height_maps)
                 # 总 Loss 加权 (语义一致性监督) 
                 # 0.4 是推荐的权重系数   
-                loss = loss_main + 0.4 * loss_aux
+                loss = loss_main + 0.4 * loss_aux+ 0.5 * loss_height
 
             # 反向传播 (AMP)
             scaler.scale(loss).backward()
@@ -279,8 +283,7 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
             scaler.update()
             
         else: # 不使用混合精度
-            outputs, aux_outputs = model(imgs) # 获取双输出
-            
+            outputs, aux_outputs, pred_heights = model(imgs)    # 获取三输出
             # --- 主 Loss ---
             loss_main = 0
             if focal_loss:
@@ -299,9 +302,9 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
                 loss_aux += CE_Loss(aux_outputs, target_small, cls_weights=None, num_classes=num_classes)
             if dice_loss:
                 loss_aux += Dice_loss(aux_outputs, target_small)
-            
+            loss_height = Height_MSE_Loss(pred_heights, height_maps)
             # 总 Loss 
-            loss = loss_main + 0.4 * loss_aux
+            loss = loss_main + 0.4 * loss_aux + 0.5 * loss_height
             
             loss.backward()
             optimizer.step()
@@ -312,11 +315,20 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
             accuracy = torch.mean((_pred == pngs).float()) 
         total_loss += loss.item()
         total_accuracy += accuracy.item()
+        global_step = epoch * len(data_loader) + iteration
+        writer.add_scalar('Train/Batch_Loss', loss.item(), global_step)
         
         # 更新进度条
         pbar.set_postfix(**{'loss': total_loss / (iteration + 1), 
                             'acc': total_accuracy / (iteration + 1), 
                             'lr': get_lr(optimizer)})
+        
+        # pbar.set_postfix(**{
+        #     'Main': loss_main.item() if isinstance(loss_main, torch.Tensor) else loss_main,
+        #     'Aux': loss_aux.item() if isinstance(loss_aux, torch.Tensor) else loss_aux,
+        #     'Height': loss_height.item(), # 看看这个是不是几百几千
+        #     'Total': total_loss / (iteration + 1)
+        # })
                             
     return total_loss / len(data_loader)
 
@@ -324,7 +336,7 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp64/weights/best_model_104.pth",
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp85/weights/best_model_104.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
@@ -333,7 +345,7 @@ def parse_args():
     parser.add_argument("--epochs", default=10, type=int, metavar="N", help="number of total epochs to train")
     parser.add_argument("--workers", default=0, type=int, metavar="N",
                         help="number of data loading workers (default: 0, meaning data loading runs in main process)")
-    parser.add_argument('--lr', default=0.000005, type=float, help='initial learning rate')
+    parser.add_argument('--lr', default=0.00001, type=float, help='initial learning rate')
     parser.add_argument('--momentum', default=0.88, type=float, metavar='M', help='momentum')
     parser.add_argument('--wd', '--weight-decay', default=3e-5, type=float,
                         metavar='W', help='weight decay (default: 1e-4)',
@@ -346,5 +358,6 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    writer = SummaryWriter(log_dir="/home/u241003661121/U-Net/logs")
     args = parse_args()
     train(args)

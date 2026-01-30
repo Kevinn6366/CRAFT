@@ -1,7 +1,7 @@
 import os
 import torch
 import numpy as np
-from model.unet_training import CE_Loss, Dice_loss, Focal_Loss
+from model.unet_training import CE_Loss, Dice_loss, Focal_Loss, Height_MSE_Loss
 from utils.utils import get_lr
 from torch.cuda.amp import autocast, GradScaler
 import time
@@ -238,14 +238,16 @@ def evaluate(model, val_loader, device, dice_loss, focal_loss, num_classes):
 
     with torch.no_grad():
         for iteration, batch in enumerate(val_loader):
-            imgs, pngs, labels = batch
+            imgs, pngs, height_maps = batch
             
             weights = torch.tensor(cls_weights).to(device)
             imgs = imgs.to(device)
             pngs = pngs.to(device)
-            labels = labels.to(device)
+            # labels = labels.to(device)
 
-            outputs = model_eval(imgs)
+            outputs= model_eval(imgs)
+            if isinstance(outputs, (tuple, list)):
+                outputs = outputs[0]
 
             # 1. Loss 计算 (CE_Loss 和 Dice_loss 内部已经处理了 Tuple，所以直接传 outputs)
             if focal_loss:
@@ -254,7 +256,7 @@ def evaluate(model, val_loader, device, dice_loss, focal_loss, num_classes):
                 loss = CE_Loss(outputs, pngs, weights, num_classes=num_classes)
 
             if dice_loss:
-                main_dice = Dice_loss(outputs, labels)
+                main_dice = Dice_loss(outputs,pngs)
                 loss = loss + main_dice
             
             # 2. 关键修复：在计算指标前，如果 outputs 是元组，必须解包
