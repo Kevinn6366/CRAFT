@@ -277,7 +277,8 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
                 loss_height = Height_MSE_Loss(pred_heights, height_maps)
                 # 总 Loss 加权 (语义一致性监督) 
                 # 0.4 是推荐的权重系数   
-                loss = loss_main + 0.4 * loss_aux+ 0.5 * loss_height
+                loss = loss_main + 0.5 * loss_height
+                #+ 0.4 * loss_aux
 
             # 反向传播 (AMP)
             scaler.scale(loss).backward()
@@ -306,8 +307,8 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
                 loss_aux += Dice_loss(aux_outputs, target_small)
             loss_height = Height_MSE_Loss(pred_heights, height_maps)
             # 总 Loss 
-            loss = loss_main + 0.4 * loss_aux + 0.5 * loss_height
-            
+            loss = loss_main  + 0.5 * loss_height
+            #+ 0.2 * loss_aux
             loss.backward()
             optimizer.step()
         # 计算精度用于显示 (只看主输出)
@@ -340,7 +341,7 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp96/weights/best_model_104.pth",
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp85/weights/best_model_104.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
@@ -350,7 +351,7 @@ def parse_args():
     parser.add_argument("--workers", default=0, type=int, metavar="N",
                         help="number of data loading workers (default: 0, meaning data loading runs in main process)")
     parser.add_argument('--lr', default=0.00001, type=float, help='initial learning rate')
-    parser.add_argument('--momentum', default=0.88, type=float, metavar='M', help='momentum')
+    parser.add_argument('--momentum', default=0.96, type=float, metavar='M', help='momentum')
     parser.add_argument('--wd', '--weight-decay', default=3e-5, type=float,
                         metavar='W', help='weight decay (default: 1e-4)',
                         dest='weight_decay')

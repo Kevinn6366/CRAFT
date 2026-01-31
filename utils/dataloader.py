@@ -5,7 +5,7 @@ from PIL import Image
 import numpy as np
 from torch.utils.data import Dataset
 import cv2
-from scipy.ndimage import distance_transform_edt
+from scipy.ndimage import label, distance_transform_edt
 
 class UnetDataset(Dataset):
     def __init__(self, data_path, input_shape, num_classes, augmentation=True, txt_name: str = "train.txt"):
@@ -47,32 +47,43 @@ class UnetDataset(Dataset):
         # -------------------------------------------------------
         return jpg, png, png
     def generate_height_map(self, mask):
-        """
-        根据语义分割 Mask 生成归一化的高度图 (Distance Map)
-        mask: (H, W) 的整数数组
-        return: (H, W) 的浮点数组, 范围 [0, 1]
-        """
         # 1. 制作二值掩码 (Binary Mask)
-        # 背景是 0，忽略区域通常是 num_classes (如21)。
-        # 我们只把有效的前景 (1 ~ num_classes-1) 视为“山峰”
+        # 把所有是食物的地方标记为 1，背景为 0
         foreground_mask = (mask > 0) & (mask < self.num_classes)
         foreground_mask = foreground_mask.astype(np.uint8)
 
-        # 2. 计算距离变换 (Distance Transform)
-        # 计算每个前景像素到最近背景像素的欧式距离
+        # 如果全图都是背景，直接返回全0
         if np.sum(foreground_mask) == 0:
-            # 如果全是背景，返回全0
             return np.zeros_like(mask, dtype=np.float32)
-        
-        dist = distance_transform_edt(foreground_mask)
 
-        # 3. 归一化 (Normalization)
-        # 论文公式 (8): 除以最大值，映射到 [0, 1]
-        max_val = dist.max()
-        if max_val > 0:
-            dist = dist / max_val
-            
-        return dist.astype(np.float32)
+        # 2. 【核心修改】连通域标记 (Connected Component Labeling)
+        # label 函数会把不相连的物体标记成不同的数字 (1, 2, 3...)
+        # labeled_array: 形状和 mask 一样，但里面是实例 ID
+        # num_features: 找到了多少个独立的物体
+        labeled_array, num_features = label(foreground_mask)
+
+        # 初始化一个空的高度图
+        final_height_map = np.zeros_like(mask, dtype=np.float32)
+
+        # 3. 循环遍历每一个独立的物体 (Instance)
+        for i in range(1, num_features + 1):
+            # 3.1 取出当前这一个物体 (也就是 Mask 里等于 i 的部分)
+            instance_mask = (labeled_array == i)
+
+            # 3.2 对这单独一个物体算距离变换
+            # 此时，dist 的最大值就是这个物体 "半径" (R_I)
+            dist = distance_transform_edt(instance_mask)
+
+            # 3.3 【关键】单独归一化
+            # 小物体 R_I 小，大物体 R_I 大，但除完之后大家中心都是 1.0
+            max_val = dist.max()
+            if max_val > 0:
+                dist = dist / max_val
+
+            # 3.4 把算好的这块高度贴到总图上
+            final_height_map += dist
+
+        return final_height_map
 
     def rand(self, a=0, b=1):
         return np.random.rand() * (b - a) + a
