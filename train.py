@@ -127,6 +127,8 @@ def train(args):
 
     # 调用函数获取新的exp文件夹和weights文件夹路径
     exp_folder, weights_folder = create_exp_folder()
+    log_dir = os.path.join(exp_folder, "logs")
+    writer = SummaryWriter(log_dir=log_dir)
 
     input_shape = [512, 512]  # 一定要是32的整数倍
 
@@ -194,7 +196,7 @@ def train(args):
 
         # 每个epoch进行训练
         loss = train_one_epoch(model, optimizer, train_loader, device, dice_loss, focal_loss,
-                               gpu_used, num_classes, scaler, epoch, train_epoch)
+                               gpu_used, num_classes, scaler, epoch, train_epoch, writer)
 
         train_losses.append(loss)  # 保存训练过程中的loss值
 
@@ -224,7 +226,7 @@ def train(args):
     plot_training_curves(train_losses, val_losses, val_metrics_history, weights_folder)
 
 # 训练val1 函数
-def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss, gpu_used, num_classes, scaler, epoch, total_epochs):
+def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss, gpu_used, num_classes, scaler, epoch, total_epochs,writer):
     model.train() # 确保模型处于训练模式
     
     total_loss = 0
@@ -316,7 +318,9 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
         total_loss += loss.item()
         total_accuracy += accuracy.item()
         global_step = epoch * len(data_loader) + iteration
+        #tensorboard 记录
         writer.add_scalar('Train/Batch_Loss', loss.item(), global_step)
+        writer.add_scalar('Train/Batch_Accuracy', accuracy.item(), global_step) # 顺便记录一下Acc
         
         # 更新进度条
         pbar.set_postfix(**{'loss': total_loss / (iteration + 1), 
@@ -336,13 +340,13 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp85/weights/best_model_104.pth",
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp96/weights/best_model_104.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
     parser.add_argument("--device", default="cuda", help="training device")
     parser.add_argument("--batch-size", default=32, type=int)
-    parser.add_argument("--epochs", default=10, type=int, metavar="N", help="number of total epochs to train")
+    parser.add_argument("--epochs", default=20, type=int, metavar="N", help="number of total epochs to train")
     parser.add_argument("--workers", default=0, type=int, metavar="N",
                         help="number of data loading workers (default: 0, meaning data loading runs in main process)")
     parser.add_argument('--lr', default=0.00001, type=float, help='initial learning rate')
@@ -358,6 +362,5 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    writer = SummaryWriter(log_dir="/home/u241003661121/U-Net/logs")
     args = parse_args()
     train(args)
