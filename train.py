@@ -74,7 +74,7 @@ def create_model(num_classes, weights):
 
 
 
-def get_optimizer_and_lr(model, batch_size, train_epoch, momentum, weight_decay):
+def get_optimizer_and_lr(model, batch_size, total_epochs, momentum, weight_decay):
     # 初始化学习率（初始学习率为1e-4）
     Init_lr = 1e-4
     # 最小学习率是初始学习率的1%
@@ -103,7 +103,7 @@ def get_optimizer_and_lr(model, batch_size, train_epoch, momentum, weight_decay)
 
     
     # 获取学习率调度器函数，根据衰减类型、初始学习率、最小学习率和训练轮次来计算学习率的变化
-    lr_scheduler_func = get_lr_scheduler(lr_decay_type, Init_lr_fit, Min_lr_fit, train_epoch)
+    lr_scheduler_func = get_lr_scheduler(lr_decay_type, Init_lr_fit, Min_lr_fit, total_epochs)
     # 返回优化器和学习率调度器
     return optimizer, lr_scheduler_func
 
@@ -116,9 +116,13 @@ def get_lr(optimizer):
 
 def train(args):
     seed_everything(11)  # 设置种子
-
+    exp_folder,weights_folder = create_exp_folder()
     num_classes = args.num_classes + 1  # 类别加上背景类
-    train_epoch = args.epochs  # 训练轮次
+    start_epoch = args.start_epoch #继续训练轮次
+
+
+
+    total_epochs = start_epoch + args.epochs
     batch_size = args.batch_size  # 设置batch size和类别数
     num_workers = args.workers  # 计算可用的工作线程数，通常取CPU核心数、batch_size和8中的最小值
 
@@ -126,8 +130,9 @@ def train(args):
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     # 调用函数获取新的exp文件夹和weights文件夹路径
-    exp_folder, weights_folder = create_exp_folder()
-    log_dir = os.path.join(exp_folder, "logs")
+    if args.log_dir:
+        log_dir = args.log_dir
+    #tensorboard logger 创建
     writer = SummaryWriter(log_dir=log_dir)
 
     input_shape = [512, 512]  # 一定要是32的整数倍
@@ -169,19 +174,17 @@ def train(args):
     # scaler = torch.amp.GradScaler(device='cuda') if args.amp else None  # 在pytorch2.7.1版本可以运用该代码可以去除警告信息
 
     # 获取优化器和学习率调度器
-    optimizer, lr_scheduler_func = get_optimizer_and_lr(model, batch_size, train_epoch,  args.momentum, args.weight_decay)
+    optimizer, lr_scheduler_func = get_optimizer_and_lr(model, batch_size, total_epochs, args.momentum, args.weight_decay)
 
     # 训练开始
     start_time = time.time()
-
+    #weights_folder
     best_acc = 0.0  # 最优准确率初始化为0
     best_model_path = os.path.join(weights_folder, f"best_model_{args.num_classes}.pth")  # 最优模型保存路径
     last_model_path = os.path.join(weights_folder, f"last_model_{args.num_classes}.pth")  # 最后一轮模型保存路径
-
     train_losses = []
     val_losses = []
     val_metrics_history = []
-
     # 是否使用focal loss来防止正负样本不平衡，是否给不同种类赋予不同的损失权值，默认是平衡的。
     focal_loss = True
     #  种类少（几类）时，设置为True
@@ -190,19 +193,24 @@ def train(args):
     dice_loss = True
 
     #   开始模型训练
-    for epoch in range(train_epoch):
+    for epoch in range(start_epoch, total_epochs):
         gpu_used = get_gpu_usage() # 计算使用GPU内存
         set_optimizer_lr(optimizer, lr_scheduler_func, epoch)  # 学习率调度函数
 
         # 每个epoch进行训练
         loss = train_one_epoch(model, optimizer, train_loader, device, dice_loss, focal_loss,
-                               gpu_used, num_classes, scaler, epoch, train_epoch, writer)
+                               gpu_used, num_classes, scaler, epoch, total_epochs, writer)
 
         train_losses.append(loss)  # 保存训练过程中的loss值
 
-        # 在验证集上评估模型
+        
+        # #tensorboard 记录 训练损失
         metrics = evaluate(model, val_loader, device, dice_loss, focal_loss, num_classes)
-
+        writer.add_scalar('Train/Epoch_Loss', loss, epoch)
+        # 在验证集上评估模型
+        writer.add_scalar('Val/Loss', metrics["Loss"], epoch)
+        writer.add_scalar('Val/Mean_Accuracy', metrics["Mean Accuracy"], epoch)
+        writer.add_scalar('Val/Mean_IoU', metrics["Mean IoU"], epoch)
         val_losses.append(metrics["Loss"])
         val_metrics_history.append(metrics)
 
@@ -319,10 +327,9 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
         total_loss += loss.item()
         total_accuracy += accuracy.item()
         global_step = epoch * len(data_loader) + iteration
-        #tensorboard 记录
+        # #tensorboard 记录 batch级别的loss和auc
         writer.add_scalar('Train/Batch_Loss', loss.item(), global_step)
         writer.add_scalar('Train/Batch_Accuracy', accuracy.item(), global_step) # 顺便记录一下Acc
-        
         # 更新进度条
         pbar.set_postfix(**{'loss': total_loss / (iteration + 1), 
                             'acc': total_accuracy / (iteration + 1), 
@@ -341,13 +348,13 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp85/weights/best_model_104.pth",
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/pre-trained model/效果不错的多分类模型。cbam加上高度loss/2.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
     parser.add_argument("--device", default="cuda", help="training device")
     parser.add_argument("--batch-size", default=32, type=int)
-    parser.add_argument("--epochs", default=20, type=int, metavar="N", help="number of total epochs to train")
+    parser.add_argument("--epochs", default=25, type=int, metavar="N", help="number of total epochs to train")
     parser.add_argument("--workers", default=0, type=int, metavar="N",
                         help="number of data loading workers (default: 0, meaning data loading runs in main process)")
     parser.add_argument('--lr', default=0.00001, type=float, help='initial learning rate')
@@ -357,6 +364,10 @@ def parse_args():
                         dest='weight_decay')
     # Mixed precision training parameters
     parser.add_argument("--amp", default=True, type=bool, help="Use torch.cuda.amp for mixed precision training")
+    # 起始轮次
+    parser.add_argument("--start-epoch", default=46, type=int, 
+                        help="Start epoch index (如果接着跑，这里填20)")
+    parser.add_argument("--log-dir", default="/home/u241003661121/U-Net/logs/log1", help="Tensorboard log directory")
     args = parser.parse_args()
 
     return args

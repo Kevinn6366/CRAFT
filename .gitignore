@@ -8,3 +8,4 @@ VOCdevkit-1/
 *.png
 *.jpg
 utils/__pycache__/
+logs/
