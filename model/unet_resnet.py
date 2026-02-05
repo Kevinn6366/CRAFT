@@ -3,7 +3,34 @@ import torch.nn as nn
 from model.resnet_backbone import resnet50
 from model.cbam import CBAM
 #unet_resnet.py
+import torchvision.ops as ops
 # 定义一个 U-Net 解码模块（上采样模块）
+
+class DeformConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False):
+        super(DeformConv2d, self).__init__()
+        
+        # 偏移量卷积
+        self.offset_conv = nn.Conv2d(in_channels, 
+                                     2 * kernel_size * kernel_size, 
+                                     kernel_size=kernel_size, 
+                                     stride=stride, 
+                                     padding=padding, 
+                                     bias=True)
+        
+        nn.init.constant_(self.offset_conv.weight, 0)
+        nn.init.constant_(self.offset_conv.bias, 0)
+        
+        self.dcn = ops.DeformConv2d(in_channels, 
+                                    out_channels, 
+                                    kernel_size=kernel_size, 
+                                    stride=stride, 
+                                    padding=padding, 
+                                    bias=bias)
+
+    def forward(self, x):
+        offset = self.offset_conv(x)
+        return self.dcn(x, offset)
 class unetUp(nn.Module):
     def __init__(self, in_size, out_size):
         super(unetUp, self).__init__()
@@ -33,6 +60,7 @@ class Unet(nn.Module):
         
         in_filters = [192, 512, 1024, 3072] 
         out_filters = [64, 128, 256, 512] 
+        self.encoder_dcn = DeformConv2d(2048, 2048)
 
         # 定义 4 层上采样模块
         self.up_concat4 = unetUp(in_filters[3], out_filters[3]) 
@@ -72,6 +100,7 @@ class Unet(nn.Module):
     def forward(self, inputs):
         # 编码器提取五层特征图
         [feat1, feat2, feat3, feat4, feat5] = self.resnet.forward(inputs)
+        feat5 = self.encoder_dcn(feat5)
 
         # 解码过程
         up4 = self.up_concat4(feat4, feat5) 
