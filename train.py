@@ -348,7 +348,7 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/pre-trained model/效果不错的多分类模型。cbam加上高度loss/2.pth",
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp124/weights/best_model_104.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
@@ -357,16 +357,16 @@ def parse_args():
     parser.add_argument("--epochs", default=25, type=int, metavar="N", help="number of total epochs to train")
     parser.add_argument("--workers", default=0, type=int, metavar="N",
                         help="number of data loading workers (default: 0, meaning data loading runs in main process)")
-    parser.add_argument('--lr', default=0.00001, type=float, help='initial learning rate')
-    parser.add_argument('--momentum', default=0.96, type=float, metavar='M', help='momentum')
-    parser.add_argument('--wd', '--weight-decay', default=3e-5, type=float,
+    parser.add_argument('--lr', default=1e-6, type=float, help='initial learning rate')
+    parser.add_argument('--momentum', default=0.90, type=float, metavar='M', help='momentum')
+    parser.add_argument('--wd', '--weight-decay', default=4e-5, type=float,
                         metavar='W', help='weight decay (default: 1e-4)',
                         dest='weight_decay')
     # Mixed precision training parameters
     parser.add_argument("--amp", default=True, type=bool, help="Use torch.cuda.amp for mixed precision training")
     # 起始轮次
-    parser.add_argument("--start-epoch", default=46, type=int, 
-                        help="Start epoch index (如果接着跑，这里填20)")
+    parser.add_argument("--start-epoch", default=50, type=int, 
+                        help="Start epoch index ")
     parser.add_argument("--log-dir", default="/home/u241003661121/U-Net/logs/log1", help="Tensorboard log directory")
     args = parser.parse_args()
 
