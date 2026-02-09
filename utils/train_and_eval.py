@@ -259,7 +259,7 @@ def evaluate(model, val_loader, device, dice_loss, focal_loss, num_classes):
                 main_dice = Dice_loss(outputs,pngs)
                 loss = loss + main_dice
             
-            # 2. 关键修复：在计算指标前，如果 outputs 是元组，必须解包
+            # 在计算指标前，如果 outputs 是元组，必须解包
             # 指标函数现在内部都有 check，但 evaluate 这里也可以显式处理一下
             # 为了安全起见，我们让 metric 函数内部去处理 isinstance，这里就不重复写了
             # 只需要传原始 outputs 进去即可，因为下面的 metric 函数我都加上了 tuple 检查

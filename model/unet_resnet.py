@@ -5,7 +5,6 @@ from model.cbam import CBAM
 #unet_resnet.py
 import torchvision.ops as ops
 # 定义一个 U-Net 解码模块（上采样模块）
-
 class DeformConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False):
         super(DeformConv2d, self).__init__()
@@ -48,8 +47,6 @@ class unetUp(nn.Module):
         outputs = self.relu(outputs)
         outputs = self.cbam(outputs)#CBAM模块
         return outputs
-
-
 # 定义 U-Net 主体结构
 class Unet(nn.Module):
     def __init__(self, num_classes=21):
@@ -66,6 +63,7 @@ class Unet(nn.Module):
         self.up_concat4 = unetUp(in_filters[3], out_filters[3]) 
         self.up_concat3 = unetUp(in_filters[2], out_filters[2]) 
         self.up_concat2 = unetUp(in_filters[1], out_filters[1]) 
+        
         self.up_concat1 = unetUp(in_filters[0], out_filters[0]) 
 
         # 最后的上采样和卷积

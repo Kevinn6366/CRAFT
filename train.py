@@ -348,18 +348,18 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp124/weights/best_model_104.pth",
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp129/weights/best_model_104.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
     parser.add_argument("--device", default="cuda", help="training device")
     parser.add_argument("--batch-size", default=32, type=int)
-    parser.add_argument("--epochs", default=25, type=int, metavar="N", help="number of total epochs to train")
+    parser.add_argument("--epochs", default=50, type=int, metavar="N", help="number of total epochs to train")
     parser.add_argument("--workers", default=0, type=int, metavar="N",
                         help="number of data loading workers (default: 0, meaning data loading runs in main process)")
     parser.add_argument('--lr', default=1e-6, type=float, help='initial learning rate')
     parser.add_argument('--momentum', default=0.90, type=float, metavar='M', help='momentum')
-    parser.add_argument('--wd', '--weight-decay', default=4e-5, type=float,
+    parser.add_argument('--wd', '--weight-decay', default=2e-5, type=float,
                         metavar='W', help='weight decay (default: 1e-4)',
                         dest='weight_decay')
     # Mixed precision training parameters
@@ -376,3 +376,5 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     train(args)
+
+

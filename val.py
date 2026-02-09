@@ -127,7 +127,6 @@ def parse_args():
     import argparse
     # 创建 ArgumentParser 对象，用于处理命令行输入
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-
     # 添加数据路径参数
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     # 添加模型权重路径参数
@@ -136,10 +135,8 @@ def parse_args():
     parser.add_argument("--num-classes", default=104, type=int)
     # 添加训练设备选择的参数，默认为 "cuda"（即使用 GPU）
     parser.add_argument("--device", default="cuda", help="training device")
-
     # 解析命令行传入的参数
-    args = parser.parse_args()
-
+    args = parser.parse_args()                                                                        
     # 返回解析后的参数对象
     return args
 

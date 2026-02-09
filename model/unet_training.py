@@ -254,12 +254,6 @@ def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio=
 
     # 返回选择好的学习率调度函数
     return func
-
-
-
-
-
-
 def Height_MSE_Loss(inputs, target):
     """
     计算高度图的均方误差损失 (MSE Loss)
@@ -291,12 +285,6 @@ def Height_MSE_Loss(inputs, target):
     loss = nn.MSELoss()(inputs, target)
     
     return loss
-
-
-
-
-
-
 def set_optimizer_lr(optimizer, lr_scheduler_func, epoch):
     # 使用学习率调度函数 lr_scheduler_func，根据当前的 epoch 获取对应的学习率
     lr = lr_scheduler_func(epoch)
