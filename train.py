@@ -348,7 +348,7 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp129/weights/best_model_104.pth",
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp135/weights/best_model_104.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
@@ -365,7 +365,7 @@ def parse_args():
     # Mixed precision training parameters
     parser.add_argument("--amp", default=True, type=bool, help="Use torch.cuda.amp for mixed precision training")
     # 起始轮次
-    parser.add_argument("--start-epoch", default=50, type=int, 
+    parser.add_argument("--start-epoch", default=153, type=int, 
                         help="Start epoch index ")
     parser.add_argument("--log-dir", default="/home/u241003661121/U-Net/logs/log1", help="Tensorboard log directory")
     args = parser.parse_args()
