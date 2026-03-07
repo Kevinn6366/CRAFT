@@ -162,7 +162,7 @@ def parse_args():
     parser.add_argument("--data_path", default="/home/u241003661121/U-Net/FoodSeg103/VOC2012/JPEGImages/00000924.jpg",
                         help="data root")
     # 添加模型权重路径参数
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp103/weights/best_model_104.pth")
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp162/weights/best_model_104.pth")
     # 添加类别数量参数，默认为 3
     parser.add_argument("--num-classes", default=104, type=int)
 
