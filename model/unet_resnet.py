@@ -5,11 +5,8 @@ import torch.nn.functional as F
 # 导入你原有的 ResNet50 Backbone 和 CBAM 模块
 from model.resnet_backbone import resnet50
 from model.cbam import CBAM
-
-# ==========================================
 # 1. 定义 UperNet 的核心组件：金字塔池化模块 (PPM)
 # 作用：获取全局和不同尺度的局部上下文信息，解决“只看局部认不出这盘菜”的问题
-# ==========================================
 class PPM(nn.Module):
     def __init__(self, in_dim, reduction_dim, bins=(1, 2, 3, 6)):
         super(PPM, self).__init__()
@@ -29,10 +26,9 @@ class PPM(nn.Module):
             out.append(F.interpolate(f(x), size=x_size[2:], mode='bilinear', align_corners=True))
         return torch.cat(out, 1)
 
-# ==========================================
+
 # 2. 定义 UperNet 解码器
 # 作用：融合多尺度特征，代替原来粗暴的 UnetUp Concat
-# ==========================================
 class UperNetDecoder(nn.Module):
     def __init__(self, in_channels_list, fpn_dim=512):
         super(UperNetDecoder, self).__init__()
@@ -106,9 +102,8 @@ class UperNetDecoder(nn.Module):
         return out, laterals[1] 
 
 
-# ==========================================
 # 3. 组装完整模型 (替代原有的 Unet 类)
-# ==========================================
+
 class Unet(nn.Module):
     def __init__(self, num_classes=21):
         super(Unet, self).__init__()
@@ -138,13 +133,13 @@ class Unet(nn.Module):
 
         # 辅助分类头 (Auxiliary Head)
         # 在 UperNet 中，辅助头通常接在 FPN 的 P4（也就是特征图尺寸为 H/16）后面，提供中层监督
-        self.aux_head = nn.Sequential(
-            nn.Conv2d(fpn_dim, 256, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(0.1),
-            nn.Conv2d(256, num_classes, kernel_size=1)
-        )
+        # self.aux_head = nn.Sequential(
+        #     nn.Conv2d(fpn_dim, 256, kernel_size=3, padding=1, bias=False),
+        #     nn.BatchNorm2d(256),
+        #     nn.ReLU(inplace=True),
+        #     nn.Dropout2d(0.1),
+        #     nn.Conv2d(256, num_classes, kernel_size=1)
+        # )
 
     def forward(self, inputs):
         input_size = inputs.size()[2:] # 记录输入尺寸 [H, W]
