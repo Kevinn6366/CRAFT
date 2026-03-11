@@ -130,7 +130,7 @@ def parse_args():
     
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     # 注意：这里是你提供的旧模型权重路径
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp162/weights/best_model_104.pth")
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp180/weights/best_model_104.pth")
     parser.add_argument("--num-classes", default=104, type=int)
     parser.add_argument("--device", default="cuda", help="training device")
     
