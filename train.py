@@ -1,30 +1,28 @@
 # 导入标准库和第三方库
-import os  # 用于操作系统功能，如文件和路径管理
-from functools import partial  # 用于部分应用函数
+import os
+from functools import partial
 import torch.nn.functional as F
 from tqdm import tqdm
-# 导入Numpy和PyTorch相关库
-import numpy as np  # 用于数值计算
-import torch  # 导入PyTorch库
-import torch.optim as optim  # 导入PyTorch的优化器模块
-from torch.utils.data import DataLoader  # 导入数据加载器模块
+import numpy as np
+import torch
+import torch.optim as optim
+from torch.utils.data import DataLoader
 import time
 import datetime
 import subprocess
 from torch.utils.tensorboard import SummaryWriter
 
-from model.unet_training import CE_Loss, Dice_loss, Focal_Loss , Height_MSE_Loss # 确保引入这三个函数
+from model.unet_training import CE_Loss, Dice_loss, Focal_Loss , Height_MSE_Loss
 
 # 导入自定义模块和模型
-from model.unet_resnet import Unet  # 导入U-Net模型
-from model.unet_training import get_lr_scheduler, set_optimizer_lr, weights_init  # 导入与U-Net训练相关的函数
-from utils.dataloader import UnetDataset, unet_dataset_collate  # 导入U-Net数据集及其合并函数
-from utils.utils import seed_everything, worker_init_fn  # 导入一些工具函数
+from model.unet_resnet import Unet
+from model.unet_training import get_lr_scheduler, set_optimizer_lr, weights_init
+from utils.dataloader import UnetDataset, unet_dataset_collate
+from utils.utils import seed_everything, worker_init_fn
 from utils.train_and_eval import evaluate
-from utils.create_exp_folder import create_exp_folder  # 用于创建实验目录
-from utils.plot_results import plot_training_curves  # 绘制模型结果图
+from utils.create_exp_folder import create_exp_folder
+from utils.plot_results import plot_training_curves
 
-# GPU占用计算函数
 def get_gpu_usage():
     try:
         result = subprocess.check_output(
@@ -54,10 +52,22 @@ def create_model(num_classes, weights):
 
         model_dict.update(temp_dict)
         model.load_state_dict(model_dict)
+    
+    # ======================================================
+    # 【核心注入】：仅修改此处策略，冻结 ResNet 
+    # ======================================================
+    print(">>> [Policy] Freezing ResNet backbone, only training Decoder and new modules.")
+    for name, param in model.named_parameters():
+        if "resnet" in name:
+            param.requires_grad = False
+        else:
+            param.requires_grad = True
+    # ======================================================
+    
     return model
 
-def get_optimizer_and_lr(model, batch_size, total_epochs, momentum, weight_decay):
-    Init_lr = 5e-6
+def get_optimizer_and_lr(model, batch_size, total_epochs, momentum, weight_decay, args_lr):
+    Init_lr = args_lr
     Min_lr = Init_lr * 0.01
     lr_decay_type = 'cos'
     nbs = 16
@@ -66,10 +76,13 @@ def get_optimizer_and_lr(model, batch_size, total_epochs, momentum, weight_decay
 
     Init_lr_fit = min(max(batch_size / nbs * Init_lr, lr_limit_min), lr_limit_max)
     Min_lr_fit = min(max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2)
-    optimizer = optim.AdamW(model.parameters(), 
+    
+    # 显式过滤掉不需要梯度的参数
+    optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
                             lr=Init_lr_fit, 
                             betas=(momentum, 0.999), 
                             weight_decay=weight_decay)
+    
     lr_scheduler_func = get_lr_scheduler(lr_decay_type, Init_lr_fit, Min_lr_fit, total_epochs)
     
     return optimizer, lr_scheduler_func
@@ -79,14 +92,14 @@ def get_lr(optimizer):
         return param_group['lr']
 
 def train(args):
-    seed_everything(11)  # 设置种子
+    seed_everything(11)
     exp_folder, weights_folder = create_exp_folder()
-    num_classes = args.num_classes + 1  # 类别加上背景类
-    start_epoch = args.start_epoch # 继续训练轮次
+    num_classes = args.num_classes + 1
+    start_epoch = args.start_epoch
 
     total_epochs = start_epoch + args.epochs
-    batch_size = args.batch_size  
-    num_workers = args.workers  
+    batch_size = args.batch_size
+    num_workers = args.workers
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
@@ -94,7 +107,7 @@ def train(args):
         log_dir = args.log_dir
     writer = SummaryWriter(log_dir=log_dir)
 
-    input_shape = [512, 512]  
+    input_shape = [512, 512]
 
     train_dataset = UnetDataset(args.data_path, input_shape, num_classes, augmentation=True, txt_name="train.txt")
     val_dataset = UnetDataset(args.data_path, input_shape, num_classes, augmentation=False, txt_name="val.txt")
@@ -107,17 +120,19 @@ def train(args):
                             pin_memory=True, drop_last=False, collate_fn=unet_dataset_collate,
                             worker_init_fn=partial(worker_init_fn, rank=0, seed=11))
 
+    # 创建模型并应用冻结逻辑
     model = create_model(num_classes=num_classes, weights=args.weights)
     model = model.to(device)
 
     scaler = torch.cuda.amp.GradScaler() if args.amp else None
 
-    optimizer, lr_scheduler_func = get_optimizer_and_lr(model, batch_size, total_epochs, args.momentum, args.weight_decay)
+    # 获取优化器
+    optimizer, lr_scheduler_func = get_optimizer_and_lr(model, batch_size, total_epochs, args.momentum, args.weight_decay, args.lr)
 
     start_time = time.time()
-    best_acc = 0.0  
-    best_model_path = os.path.join(weights_folder, f"best_model_{args.num_classes}.pth")  
-    last_model_path = os.path.join(weights_folder, f"last_model_{args.num_classes}.pth")  
+    best_acc = 0.0
+    best_model_path = os.path.join(weights_folder, f"best_model_{args.num_classes}.pth")
+    last_model_path = os.path.join(weights_folder, f"last_model_{args.num_classes}.pth")
     
     train_losses = []
     val_losses = []
@@ -130,7 +145,6 @@ def train(args):
         gpu_used = get_gpu_usage()
         set_optimizer_lr(optimizer, lr_scheduler_func, epoch) 
 
-        # 接收拆解后的详细 Loss
         loss, loss_main, loss_height, loss_aux = train_one_epoch(
             model, optimizer, train_loader, device, dice_loss, focal_loss,
             gpu_used, num_classes, scaler, epoch, total_epochs, writer
@@ -138,7 +152,6 @@ def train(args):
 
         train_losses.append(loss) 
 
-        # 记录 Epoch 级别的独立 Loss 到 TensorBoard
         writer.add_scalar('Train_Epoch/Total_Loss', loss, epoch)
         writer.add_scalar('Train_Epoch/Loss_Main_Semantic', loss_main, epoch)
         writer.add_scalar('Train_Epoch/Loss_Height_Prior', loss_height, epoch)
@@ -167,22 +180,18 @@ def train(args):
 
     plot_training_curves(train_losses, val_losses, val_metrics_history, weights_folder)
 
-
 def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss, gpu_used, num_classes, scaler, epoch, total_epochs, writer):
     model.train() 
-    
-    # 累加器初始化
     total_loss = 0.0
     total_loss_main = 0.0
     total_loss_height = 0.0
     total_loss_aux = 0.0
     total_accuracy = 0.0
     
-    # 极其方便地在这里修改不同 Loss 之间的比例
     loss_weights = {
         'main': 1.0,
-        'height': 1.0,  # 如果在 Tensorboard 发现 Height Loss 太小，把它改成 5.0 或 10.0
-        'aux': 0.4      # 中层辅助监督，防止网络深层梯度消失
+        'height': 2.0, 
+        'aux': 0.4
     }
     
     pbar = tqdm(data_loader, desc=f'Epoch {epoch + 1}/{total_epochs}', mininterval=0.3)
@@ -203,7 +212,6 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
             with torch.cuda.amp.autocast():
                 outputs, aux_outputs, pred_heights = model(imgs) 
                 
-                # 1. 计算主 Loss
                 l_main = 0
                 if focal_loss:
                     l_main += Focal_Loss(outputs, pngs, cls_weights=None, num_classes=num_classes)
@@ -212,7 +220,6 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
                 if dice_loss:
                     l_main += Dice_loss(outputs, pngs)
                 
-                # 2. 计算辅助 Loss (H/4 尺寸) 
                 target_small = F.interpolate(pngs.unsqueeze(1).float(), scale_factor=0.25, mode='nearest').squeeze(1).long()
                 l_aux = 0
                 if focal_loss:
@@ -222,10 +229,8 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
                 if dice_loss:
                     l_aux += Dice_loss(aux_outputs, target_small)
                 
-                # 3. 计算高度 Loss
                 l_height = Height_MSE_Loss(pred_heights, height_maps)
                 
-                # 4. 加权融合
                 loss = (loss_weights['main'] * l_main) + \
                        (loss_weights['height'] * l_height) + \
                        (loss_weights['aux'] * l_aux)
@@ -263,13 +268,11 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
             loss.backward()
             optimizer.step()
             
-        # 安全获取标量值
         val_l_main = l_main.item() if isinstance(l_main, torch.Tensor) else l_main
         val_l_height = l_height.item() if isinstance(l_height, torch.Tensor) else l_height
         val_l_aux = l_aux.item() if isinstance(l_aux, torch.Tensor) else l_aux
         val_loss = loss.item()
 
-        # 累加用于求平均
         total_loss += val_loss
         total_loss_main += val_l_main
         total_loss_height += val_l_height
@@ -282,14 +285,12 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
         
         global_step = epoch * len(data_loader) + iteration
         
-        # 将分离的 Loss 实时写入 TensorBoard
         writer.add_scalar('Train_Batch/Total_Loss', val_loss, global_step)
         writer.add_scalar('Train_Batch/Loss_Main_Semantic', val_l_main, global_step)
         writer.add_scalar('Train_Batch/Loss_Height_Prior', val_l_height, global_step)
         writer.add_scalar('Train_Batch/Loss_Auxiliary', val_l_aux, global_step)
         writer.add_scalar('Train_Batch/Accuracy', accuracy.item(), global_step) 
 
-        # 进度条显示 (显示实时比例，方便肉眼监控)
         pbar.set_postfix(**{
             'L_Main': f"{val_l_main:.3f}", 
             'L_Height': f"{val_l_height:.3f}", 
@@ -301,32 +302,27 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
     num_batches = len(data_loader)
     return total_loss / num_batches, total_loss_main / num_batches, total_loss_height / num_batches, total_loss_aux / num_batches
 
-
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp179/weights/best_model_104.pth",
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/pre-trained model/2135完整测试集/sagate/best_model_104.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
     parser.add_argument("--device", default="cuda", help="training device")
     parser.add_argument("--batch-size", default=16, type=int)
-    parser.add_argument("--epochs", default=50, type=int, metavar="N", help="number of total epochs to train")
+    parser.add_argument("--epochs", default=25, type=int, metavar="N", help="number of total epochs to train")
     parser.add_argument("--workers", default=0, type=int, metavar="N",
-                        help="number of data loading workers (default: 0, meaning data loading runs in main process)")
-    parser.add_argument('--lr', default=1e-5, type=float, help='initial learning rate')
+                        help="number of data loading workers")
+    parser.add_argument('--lr', default=5e-5, type=float, help='initial learning rate')
     parser.add_argument('--momentum', default=0.90, type=float, metavar='M', help='momentum')
     parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)',
                         dest='weight_decay')
-    # Mixed precision training parameters
-    parser.add_argument("--amp", default=True, type=bool, help="Use torch.cuda.amp for mixed precision training")
-    # 起始轮次
-    parser.add_argument("--start-epoch", default=50, type=int, 
-                        help="Start epoch index ")
+    parser.add_argument("--amp", default=True, type=bool, help="Use torch.cuda.amp")
+    parser.add_argument("--start-epoch", default=0, type=int, help="Start epoch index")
     parser.add_argument("--log-dir", default="/home/u241003661121/U-Net/logs/log1", help="Tensorboard log directory")
     args = parser.parse_args()
-
     return args
 
 if __name__ == "__main__":

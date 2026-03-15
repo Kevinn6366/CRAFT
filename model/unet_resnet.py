@@ -41,9 +41,13 @@ class UperNetDecoder(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-        # FPN 侧边连接与融合卷积 (降维统一到 fpn_dim)
+        # FPN 侧边连接与融合卷积
         self.lateral_convs = nn.ModuleList()
         self.fpn_convs = nn.ModuleList()
+        
+        # 【核心新增】：拓扑门控生成器 (Topology Gates)
+        # 用来为每一层 Skip Connection 生成 0~1 的空间掩码
+        self.topo_gates = nn.ModuleList()
         
         for in_ch in in_channels_list[:-1]:  # 对应 feat2, feat3, feat4
             self.lateral_convs.append(nn.Sequential(
@@ -55,6 +59,12 @@ class UperNetDecoder(nn.Module):
                 nn.Conv2d(fpn_dim, fpn_dim, kernel_size=3, padding=1, bias=False),
                 nn.BatchNorm2d(fpn_dim),
                 nn.ReLU(inplace=True)
+            ))
+            
+            # 每一层对应一个门控：用 1x1 卷积将 FPN 特征压缩为 1 个通道，再经过 Sigmoid
+            self.topo_gates.append(nn.Sequential(
+                nn.Conv2d(fpn_dim, 1, kernel_size=1, bias=False),
+                nn.Sigmoid()
             ))
 
         # FPN 最终特征拼接后的融合瓶颈层
@@ -69,10 +79,29 @@ class UperNetDecoder(nn.Module):
         p5 = self.ppm_conv(self.ppm(feat5))
         
         laterals = [p5]
+        
+        # 从深层到浅层遍历 (FPN 的 Top-Down 路径)
         for i in range(len(features) - 2, -1, -1):
-            lat = self.lateral_convs[i](features[i])
+            # 1. 获取低层特征 (包含丰富细节，但也含糊了大量的背景和粘连噪声)
+            lat = self.lateral_convs[i](features[i]) 
+            
+            # 2. 将上一层的高层特征上采样 (包含了高级语义和粗略的拓扑信息)
             prev_p_upsampled = F.interpolate(laterals[-1], size=lat.shape[2:], mode='bilinear', align_corners=True)
-            p = lat + prev_p_upsampled
+            
+            # ==========================================
+            # 【核心修改：拓扑门控 Skip Connection】
+            # ==========================================
+            # a. 用高层特征生成当前的拓扑 Mask (尺寸 [B, 1, H, W], 值在 0~1 之间)
+            topo_mask = self.topo_gates[i](prev_p_upsampled)
+            
+            # b. 用 Mask 对低层特征进行“提纯” ( Element-wise Multiply )
+            # 也就是你说的：拿高度图/拓扑图指导它，只让物体边缘通过，屏蔽背景纹理
+            lat_filtered = lat * topo_mask
+            
+            # c. 完美的融合 (Add)：被提纯的高清细节 + 高层全局语义 (没有任何信息被暴力抛弃)
+            p = lat_filtered + prev_p_upsampled
+            # ==========================================
+            
             p = self.fpn_convs[i](p)
             laterals.append(p)
         
@@ -83,9 +112,7 @@ class UperNetDecoder(nn.Module):
         
         out = self.fpn_bottleneck(torch.cat(outs, 1))
         
-        # 返回主特征 out 和用于 AuxLoss 的 p4 特征 (laterals[1] 对应 FPN 的 1/16 尺度)
-        return out, laterals[1] 
-
+        return out, laterals[1]
 
 # 3. 组装完整模型
 class Unet(nn.Module):
