@@ -53,16 +53,7 @@ def create_model(num_classes, weights):
         model_dict.update(temp_dict)
         model.load_state_dict(model_dict)
     
-    # ======================================================
-    # 【核心注入】：仅修改此处策略，冻结 ResNet 
-    # ======================================================
-    print(">>> [Policy] Freezing ResNet backbone, only training Decoder and new modules.")
-    for name, param in model.named_parameters():
-        if "resnet" in name:
-            param.requires_grad = False
-        else:
-            param.requires_grad = True
-    # ======================================================
+    # 【已删除】：冻结 ResNet 的逻辑已移除，现在全量参数都会参与训练
     
     return model
 
@@ -190,7 +181,7 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
     
     loss_weights = {
         'main': 1.0,
-        'height': 2.0, 
+        'height': 10, 
         'aux': 0.4
     }
     
@@ -305,15 +296,16 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="/home/u241003661121/U-Net/pre-trained model/2135完整测试集/sagate/best_model_104.pth",
+    parser.add_argument("--weights", default="",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
     parser.add_argument("--device", default="cuda", help="training device")
     parser.add_argument("--batch-size", default=16, type=int)
-    parser.add_argument("--epochs", default=25, type=int, metavar="N", help="number of total epochs to train")
+    parser.add_argument("--epochs", default=60, type=int, metavar="N", help="number of total epochs to train")
     parser.add_argument("--workers", default=0, type=int, metavar="N",
                         help="number of data loading workers")
+                        
     parser.add_argument('--lr', default=5e-5, type=float, help='initial learning rate')
     parser.add_argument('--momentum', default=0.90, type=float, metavar='M', help='momentum')
     parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
