@@ -58,15 +58,11 @@ def create_model(num_classes, weights):
     return model
 
 def get_optimizer_and_lr(model, batch_size, total_epochs, momentum, weight_decay, args_lr):
-    Init_lr = args_lr
-    Min_lr = Init_lr * 0.01
-    lr_decay_type = 'cos'
-    nbs = 16
-    lr_limit_max = 1e-4
-    lr_limit_min = 1e-4
-
-    Init_lr_fit = min(max(batch_size / nbs * Init_lr, lr_limit_min), lr_limit_max)
-    Min_lr_fit = min(max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2)
+    # ==========================================
+    # 解除封印版本：直接使用传入的 lr，下探到 1%
+    # ==========================================
+    Init_lr_fit = args_lr
+    Min_lr_fit = Init_lr_fit * 0.01  # 从 1e-6 下探到 1e-8
     
     # 显式过滤掉不需要梯度的参数
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
@@ -74,7 +70,7 @@ def get_optimizer_and_lr(model, batch_size, total_epochs, momentum, weight_decay
                             betas=(momentum, 0.999), 
                             weight_decay=weight_decay)
     
-    lr_scheduler_func = get_lr_scheduler(lr_decay_type, Init_lr_fit, Min_lr_fit, total_epochs)
+    lr_scheduler_func = get_lr_scheduler('cos', Init_lr_fit, Min_lr_fit, total_epochs)
     
     return optimizer, lr_scheduler_func
 
@@ -179,9 +175,10 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
     total_loss_aux = 0.0
     total_accuracy = 0.0
     
+    # 提示：如果跑了几个 epoch 发现语义精度不动，可以把这里的 'height' 降到 2 甚至 1
     loss_weights = {
         'main': 1.0,
-        'height': 10, 
+        'height': 2, 
         'aux': 0.4
     }
     
@@ -295,25 +292,30 @@ def train_one_epoch(model, optimizer, data_loader, device, dice_loss, focal_loss
 
 def parse_args():
     import argparse
-    parser = argparse.ArgumentParser(description="pytorch fcn training")
-    parser.add_argument("--weights", default="",
+    parser = argparse.ArgumentParser(description="pytorch fcn training - Fine Tuning")
+    
+    # --- 【修改】接力训练的权重路径 ---
+    parser.add_argument("--weights", default="/home/u241003661121/U-Net/run/train/exp197/weights/best_model_104.pth",
                         help="Path to the directory containing model weights")
     parser.add_argument("--data-path", default="/home/u241003661121/U-Net/FoodSeg103", help="VOCdevkit root")
     parser.add_argument("--num-classes", default=104, type=int)
     parser.add_argument("--device", default="cuda", help="training device")
     parser.add_argument("--batch-size", default=16, type=int)
-    parser.add_argument("--epochs", default=60, type=int, metavar="N", help="number of total epochs to train")
+    parser.add_argument("--epochs", default=20, type=int, metavar="N", help="number of total epochs to train")
     parser.add_argument("--workers", default=0, type=int, metavar="N",
                         help="number of data loading workers")
                         
-    parser.add_argument('--lr', default=5e-5, type=float, help='initial learning rate')
+    # --- 【修改】初始学习率设为 1e-6 ---
+    parser.add_argument('--lr', default=1e-6, type=float, help='initial learning rate')
     parser.add_argument('--momentum', default=0.90, type=float, metavar='M', help='momentum')
     parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)',
                         dest='weight_decay')
     parser.add_argument("--amp", default=True, type=bool, help="Use torch.cuda.amp")
     parser.add_argument("--start-epoch", default=0, type=int, help="Start epoch index")
-    parser.add_argument("--log-dir", default="/home/u241003661121/U-Net/logs/log1", help="Tensorboard log directory")
+    
+    # --- 【修改】开启新的 log 文件夹，避免覆盖 ---
+    parser.add_argument("--log-dir", default="/home/u241003661121/U-Net/logs/finetune_log", help="Tensorboard log directory")
     args = parser.parse_args()
     return args
 

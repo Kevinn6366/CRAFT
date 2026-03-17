@@ -41,11 +41,10 @@ class UnetDataset(Dataset):
         # 将大于 num_classes 的值（通常是255作为忽略区域）设为 num_classes
         png[png >= self.num_classes] = self.num_classes
         height_map = self.generate_height_map(png)
-
-        # -------------------------------------------------------
+        
         # 这里不再生成 seg_labels (One-Hot)，直接返回 png
-        # -------------------------------------------------------
-        return jpg, png, png
+        return jpg, png, height_map
+
     def generate_height_map(self, mask):
         # 1. 制作二值掩码 (Binary Mask)
         # 把所有是食物的地方标记为 1，背景为 0
@@ -57,9 +56,6 @@ class UnetDataset(Dataset):
             return np.zeros_like(mask, dtype=np.float32)
 
         # 2. 【核心修改】连通域标记 (Connected Component Labeling)
-        # label 函数会把不相连的物体标记成不同的数字 (1, 2, 3...)
-        # labeled_array: 形状和 mask 一样，但里面是实例 ID
-        # num_features: 找到了多少个独立的物体
         labeled_array, num_features = label(foreground_mask)
 
         # 初始化一个空的高度图
@@ -71,14 +67,13 @@ class UnetDataset(Dataset):
             instance_mask = (labeled_array == i)
 
             # 3.2 对这单独一个物体算距离变换
-            # 此时，dist 的最大值就是这个物体 "半径" (R_I)
             dist = distance_transform_edt(instance_mask)
 
-            # 3.3 【关键】单独归一化
-            # 小物体 R_I 小，大物体 R_I 大，但除完之后大家中心都是 1.0
+            # 3.3 【关键】单独归一化 + 陡峭化处理 (Steepening)
             max_val = dist.max()
             if max_val > 0:
                 dist = dist / max_val
+                dist = np.power(dist, 0.2)
 
             # 3.4 把算好的这块高度贴到总图上
             final_height_map += dist
