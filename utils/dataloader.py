@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 import cv2
 from scipy.ndimage import label, distance_transform_edt
 
+
 class UnetDataset(Dataset):
     def __init__(self, data_path, input_shape, num_classes, augmentation=True, txt_name: str = "train.txt"):
         with open(os.path.join(data_path, "VOC2012/ImageSets/Segmentation", txt_name), "r") as f:
@@ -25,57 +26,41 @@ class UnetDataset(Dataset):
         annotation_line = self.annotation_lines[index]
         name = annotation_line.split()[0]
 
-        # 1. 读取图片
         jpg = Image.open(os.path.join(self.data_path, "VOC2012/JPEGImages", name + ".jpg"))
         png = Image.open(os.path.join(self.data_path, "VOC2012/SegmentationClass", name + ".png"))
 
-        # 2. 数据增强
         jpg, png = self.get_random_data(jpg, png, self.input_shape, random=self.augmentation)
 
-        # 3. 预处理图片 [H, W, C] -> [C, H, W]
         jpg = np.transpose(preprocess_input(np.array(jpg, np.float64)), [2, 0, 1])
-        
-        # 4. 处理标签 (关键修改：保持为索引，不要转One-Hot)
+
         png = np.array(png)
-        
-        # 将大于 num_classes 的值（通常是255作为忽略区域）设为 num_classes
+
         png[png >= self.num_classes] = self.num_classes
         height_map = self.generate_height_map(png)
-        
-        # 这里不再生成 seg_labels (One-Hot)，直接返回 png
+
         return jpg, png, height_map
 
     def generate_height_map(self, mask):
-        # 1. 制作二值掩码 (Binary Mask)
-        # 把所有是食物的地方标记为 1，背景为 0
         foreground_mask = (mask > 0) & (mask < self.num_classes)
         foreground_mask = foreground_mask.astype(np.uint8)
 
-        # 如果全图都是背景，直接返回全0
         if np.sum(foreground_mask) == 0:
             return np.zeros_like(mask, dtype=np.float32)
 
-        # 2. 【核心修改】连通域标记 (Connected Component Labeling)
         labeled_array, num_features = label(foreground_mask)
 
-        # 初始化一个空的高度图
         final_height_map = np.zeros_like(mask, dtype=np.float32)
 
-        # 3. 循环遍历每一个独立的物体 (Instance)
         for i in range(1, num_features + 1):
-            # 3.1 取出当前这一个物体 (也就是 Mask 里等于 i 的部分)
             instance_mask = (labeled_array == i)
 
-            # 3.2 对这单独一个物体算距离变换
             dist = distance_transform_edt(instance_mask)
 
-            # 3.3 【关键】单独归一化 + 陡峭化处理 (Steepening)
             max_val = dist.max()
             if max_val > 0:
                 dist = dist / max_val
                 dist = np.power(dist, 0.2)
 
-            # 3.4 把算好的这块高度贴到总图上
             final_height_map += dist
 
         return final_height_map
@@ -148,7 +133,7 @@ class UnetDataset(Dataset):
 def unet_dataset_collate(batch):
     images = []
     pngs = []
-    height_maps = [] 
+    height_maps = []
 
     for img, png, h_map in batch:
         images.append(img)
@@ -157,8 +142,6 @@ def unet_dataset_collate(batch):
 
     images = torch.from_numpy(np.array(images)).type(torch.FloatTensor)
     pngs = torch.from_numpy(np.array(pngs)).long()
-    
-    # 高度图是浮点数，且不需要 Long 类型，用 FloatTensor
     height_maps = torch.from_numpy(np.array(height_maps)).type(torch.FloatTensor)
 
     return images, pngs, height_maps
