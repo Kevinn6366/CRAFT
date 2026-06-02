@@ -7,5 +7,6 @@ VOCdevkit-1/
 *.pth
 *.png
 *.jpg
-utils/__pycache__/
+utils/
+model/
 logs/
