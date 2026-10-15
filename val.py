@@ -1,0 +1,5 @@
+"""Validation entry point."""
+from validation import main
+
+if __name__ == "__main__":
+    main()
