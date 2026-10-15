@@ -12,7 +12,6 @@ from utils.boundary_metrics import BoundaryMetrics
 from utils.common import (inspect_data, split_ids, write_json, provenance,
                                 load_checkpoint, device_from_name, file_hash)
 from models.factory import build_model
-from models.config import VARIANTS
 from utils.dataloader import UnetDataset
 from utils.metrics import mean_iou, pixel_accuracy, mean_accuracy, frequency_weighted_iou
 from utils.region_metrics import per_class_regions, region_summary
@@ -76,7 +75,7 @@ def run(args):
     global_metric = GlobalIoU(classes)
     metrics = BoundaryMetrics(classes, args.boundary_ratio, args.tolerance_ratio)
     meta = {'args': vars(args), 'code': provenance(), 'dataset': data, 'num_classes': classes,
-            'variant': args.variant, 'method_name': args.method_name or VARIANTS[args.variant].title,
+            'variant': args.variant, 'method_name': args.method_name or 'CRAFT',
             'miou_protocol': 'legacy mean_iou, batch=1, equal mean over test images; no metric changes',
             'miou_grid': list(TEST_SHAPE), 'boundary_grid': list(TEST_SHAPE),
             'boundary_restoration': 'none: same argmax and GT tensors as legacy mIoU'}

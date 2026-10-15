@@ -38,14 +38,6 @@ class DinoFeatures(nn.Module):
         return [pyramid[0], *pyramid]
 
 
-def replace(model, backbone='dinov3_b'):
-    from models.upernet import UperNetDecoder
-    model.resnet = DinoFeatures(backbone)
-    model.decoder = UperNetDecoder([256]*4, fpn_dim=512)
-    model.backbone_name = backbone
-    return model
-
-
 def load(model, path):
     from safetensors.torch import load_file
     spec = SPECS[model.backbone_name]

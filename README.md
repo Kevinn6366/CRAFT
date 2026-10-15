@@ -84,14 +84,14 @@ Training uses 512 × 512 inputs. `best.pt` is selected by validation mIoU; `last
 ## Validation
 
 ```bash
-python validation.py \
+python val.py \
     --data-path data/foodseg103 --num-classes 104 \
     --backbone dinov3_b --weights runs/foodseg103_b/best.pt \
     --batch-size 24 --device cuda \
     --output runs/foodseg103_b/validation.json
 ```
 
-`val.py` is an alias for this validation entry point. Validation uses `val.txt` and the training input size recorded in the checkpoint.
+Validation uses `val.txt` and the training input size recorded in the checkpoint.
 
 ## Test
 
@@ -112,8 +112,7 @@ Formal testing uses `test.txt`, a 480 × 512 letterboxed grid, and batch size 1.
 ├── utils/                  # Data loading, losses, metrics, and checkpoint utilities
 ├── tools/                  # Dataset conversion and pretrained weight download
 ├── train.py                # Training and resume
-├── validation.py           # Validation split evaluation
-├── val.py                  # Validation alias
+├── val.py                  # Validation split evaluation
 ├── test.py                 # Formal test and boundary diagnostics
 ├── README.md
 └── requirements.txt

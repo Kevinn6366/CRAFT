@@ -2,17 +2,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models._initialization import resnet50
+from models.dinov3 import DinoFeatures
+from utils.losses import weights_init
 from models.craft import CRAFT
 
 from models.upernet import UperNetDecoder
 
-class Unet(nn.Module):
-    def __init__(self, num_classes=21):
-        super(Unet, self).__init__()
+class CRAFTSegmentation(nn.Module):
+    def __init__(self, num_classes=105, backbone="dinov3_b"):
+        super().__init__()
 
-        self.resnet = resnet50()
-        in_channels_list = [256, 512, 1024, 2048]
+        self.resnet = DinoFeatures(backbone)
+        self.backbone_name = backbone
+        in_channels_list = [256, 256, 256, 256]
         fpn_dim = 512
 
         self.decoder = UperNetDecoder(in_channels_list, fpn_dim=fpn_dim)
@@ -48,6 +50,10 @@ class Unet(nn.Module):
             nn.Dropout2d(0.1),
             nn.Conv2d(256, num_classes, kernel_size=1)
         )
+
+        for module in (self.rgb_proj, self.height_proj, self.craft,
+                       self.final, self.height_head, self.aux_head):
+            weights_init(module)
 
     def forward(self, inputs):
         input_size = inputs.size()[2:]

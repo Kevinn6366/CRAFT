@@ -13,7 +13,6 @@ from tqdm import tqdm
 from utils.common import (NoSingletonBatchSampler, inspect_data, provenance,
                                 worker_seed, write_json, load_state, device_from_name, file_hash)
 from models.factory import build_model, loss_terms
-from models.config import VARIANTS
 from utils.losses import get_lr_scheduler, set_optimizer_lr
 from utils.dataloader import UnetDataset, unet_dataset_collate
 from utils.utils import seed_everything
@@ -83,7 +82,7 @@ def run(args):
             'seed': args.seed, 'config': vars(args), 'dataset': data, 'code': provenance(),
             'height_target': 'foreground component EDT, exponent 0.2',
             'loss_weights': {'main': 1.0, 'aux': 0.4,
-                             'height': args.height_weight if VARIANTS[args.variant].height_supervision else 0.0},
+                             'height': args.height_weight},
             'validation': 'legacy evaluate: equal mean of batch metrics; shuffled; training size',
             'selection': 'Mean Accuracy (legacy)',
             'last_singleton_policy': 'merge into preceding training batch; keep all images'}
